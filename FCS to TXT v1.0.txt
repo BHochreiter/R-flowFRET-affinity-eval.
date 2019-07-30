@@ -1,0 +1,13 @@
+##This short code transforms all FCS files within a flder into tab delimited txt files
+
+folderName=choose.dir(default = "", caption = "Select folder")
+files <- list.files(folderName, full.names=TRUE)
+files <- files[ grepl("\\.fcs", files) ]
+
+for (f in files) {
+path=f
+pathnew<-sub("\\.fcs","\\.txt",path)
+data<-read.FCS(path)
+data2<-head(data,n=dim(data)[1])
+write.table(data2,file=pathnew,sep="\t", col.names=NA ,row.names = TRUE)
+}
