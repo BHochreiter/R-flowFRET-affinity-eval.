@@ -1,0 +1,311 @@
+#R code for data treatment of FRET results, B. Hochreiter 2018
+#Version 1.4, 3rd July 2019
+
+#file settings
+
+	batch_analysis=TRUE
+
+	separator="\t"
+
+	donorName="FL1.A"
+	fretName="FL2.A"
+	acceptorName="FL11.A"
+
+#measurement settings
+
+	donorBG	=	4768.150146
+	fretBG	=	7479.149902
+	acceptorBG	=	2716.450073
+		
+	donorCutoff	=	2000000
+	fretCutoff	=	1
+	acceptorCutoff	=	1
+		
+	S1	=	0.073874617
+	S2	=	0.153809799
+	S3	=	0
+	S4	=	0
+		
+	alpha	=	0.574157655
+	beta	=	1.687052226
+
+
+#fitting settings
+
+	K_start=1e-7
+		K_low=1e-20
+		K_up=1e20
+
+	z_start=1
+		z_low=0.1
+		z_up=10
+
+	Fmax_start=0.17
+		Fmax_low=0.05
+		Fmax_up=0.30
+
+	lowerAD=0.2
+	upperAD=3
+
+#DFRET average calculation
+
+	AvrgLowAD=0.8
+	AvrgHigAD=1.2
+
+
+#evaluation settings
+
+	printselected=TRUE
+	printresults=TRUE
+
+
+#DO NOT CHANGE ANYTHING AFTER THIS LINE
+######################################################################################
+graphics.off()
+options(echo=TRUE)
+
+#batch-analysis
+
+	if(batch_analysis==TRUE){
+		folderName=choose.dir(default = "", caption = "Select folder")
+
+		files <- list.files(folderName, full.names=TRUE)
+		files <- files[ grepl("\\.txt", files) ]
+
+		sink("Fitresults1.txt")
+		cat("name","\t","K Estimate","\t","K Std. Error","\t","z Estimate","\t","z Std. Error","\t","Fmax Estimate","\t","Fmax Std. Error","\n")
+		sink()
+		sink("DFRETresults.txt")
+		cat("name","\t","from","\t","to","\t","count(total)","\t","count(inrange)","\t","mean","\t","stdev","\t","min","\t","Q1","\t","med","\t","Q3","\t","max","\n")
+		sink()
+	}else{	
+		files<-file.choose()
+	}
+
+	count=0
+	for (f in files){
+		count=count+1
+		tryCatch({
+
+#create names
+
+			path=f
+			rawdata<-read.table(path,header=TRUE,fill=TRUE,sep=separator)
+
+			name<-basename(path)
+			name_base<-sub("\\.txt","",name)
+			name1<-paste(sep="",name_base,"_data.txt")
+			name2<-paste(sep="",name_base,"_selection.png")
+			name3<-paste(sep="",name_base,"_fitting.png")
+			name4<-paste(sep="",name_base,"_FITresults.txt")
+			name5<-paste(sep="",name_base,"_datafit.txt")
+			name6<-paste(sep="",name_base,"_DFRETresult.txt")
+			name7<-paste(sep="",name_base,"_curvedata.txt")
+			name8<-paste(sep="",name_base,"_curveplot.png")
+
+#calculation of values
+
+			names(rawdata)[names(rawdata) == donorName] <- "donorRAW"
+			names(rawdata)[names(rawdata) == fretName] <- "fretRAW"
+			names(rawdata)[names(rawdata) == acceptorName] <- "acceptorRAW"
+
+			data <- data.frame(donorRAW=as.numeric(as.character(rawdata$donorRAW)),fretRAW=as.numeric(as.character(rawdata$fretRAW)),acceptorRAW=as.numeric(as.character(rawdata$acceptorRAW)))
+
+			data$don_bg <- data$donorRAW-donorBG
+			data$fret_bg <- data$fretRAW-fretBG
+			data$acc_bg <- data$acceptorRAW-acceptorBG
+
+			data$Dc <- (data$don_bg-(S4*data$acc_bg))/(1-S3*S4)
+			data$Ac <- (data$acc_bg-(S3*data$don_bg))/(1-S3*S4)
+			data$Fc <- data$fret_bg-(data$don_bg*S1)-(data$acc_bg*S2)
+
+			data$don <- data$Dc*alpha+data$Fc
+			data$acc <- data$Ac*beta
+			data$acctodon <- data$acc/data$don
+
+			data=data[!data$don<0,]
+			data=data[!data$acc<0,]
+
+			data$DFRET <- data$Fc/data$don
+
+			data1=data[!data$don_bg<donorCutoff,]
+			data1=data1[!data$fret_bg<fretCutoff,]
+			data1=data1[!data$acc_bg<acceptorCutoff,]
+			data1<-na.omit(data1)
+
+#Summary of DFRET
+
+			data1sub2=data1[!data1$acctodon>AvrgHigAD,]
+			data1sub2=data1sub2[!data1sub2$acctodon<AvrgLowAD,]
+			data1sub2<-na.omit(data1sub2)
+
+			results<-summary(data1sub2$DFRET)
+			names(results)<-NULL
+
+			if(batch_analysis==TRUE){
+				sink("DFRETresults.txt",append=TRUE)
+				cat(name,"\t",AvrgLowAD,"\t",AvrgHigAD,"\t",NROW(data1),"\t",NROW(data1sub2$DFRET),"\t",mean(data1sub2$DFRET),"\t",sd(data1sub2$DFRET),"\t",results[1],"\t",results[2],"\t",results[3],"\t",results[5],"\t",results[6],"\n")
+				sink()
+			}else{
+				sink(name6)
+				cat("name","\t","from","\t","to","\t","count(total)","\t","count(inrange)","\t","mean","\t","stdev","\t","min","\t","Q1","\t","med","\t","Q3","\t","max","\n")
+				cat(name,"\t",AvrgLowAD,"\t",AvrgHigAD,"\t",NROW(data1),"\t",NROW(data1sub2$DFRET),"\t",mean(data1sub2$DFRET),"\t",sd(data1sub2$DFRET),"\t",results[1],"\t",results[2],"\t",results[3],"\t",results[5],"\t",results[6],"\n")
+				sink()
+			}
+
+#generate selected sub-groups
+
+			data1sub=data1[!data1$acctodon>upperAD,]
+			data1sub=data1sub[!data1sub$acctodon<lowerAD,]
+			data1sub<-na.omit(data1sub)
+
+#Fitting
+
+			f1<-function(don,acc,K,z,Fmax){(-sqrt((-don*K-acc*z*K-1)^2-4*don*acc*z*K^2)+don*K+acc*z*K+1)/(2*K*don)*Fmax}
+		
+			try(rm(fit), silent=TRUE)
+
+			try(fit<-nls(DFRET~f1(don,acc,K,z,Fmax),algorithm="port",data=data1sub,start=list(K=K_start,z=z_start,Fmax=Fmax_start), lower=list(K=K_low,z=z_low,Fmax=Fmax_low), upper=list(K=K_up,z=z_up,Fmax=Fmax_up),control=list(maxiter = 500000, minFactor=1/2000, warnOnly=T)))
+			
+			fitting<-TRUE
+			tryCatch({summary(fit)},error=function(e){fitting<<-FALSE})
+
+			fitv<-coef(fit)
+
+			DFRETfit=f1(data1sub$don,data1sub$acc,fitv[1],fitv[2],fitv[3])
+			DFRETres=data1sub$DFRET-DFRETfit
+
+			if(fitting==TRUE){
+				data1sub$DFRETfit<-DFRETfit
+				data1sub$DFRETres<-DFRETres
+			}
+
+			yupb=2*fitv[3]
+
+
+#generate aggregated curves
+
+			data1sub$ADround<-round(data1sub$acctodon,1)
+			Aggr<-aggregate(.~ADround,data=data1sub,median)
+			Aggrquart<-aggregate(.~ADround,data=data1sub,quantile)
+			Aggr$DFRET_Q1<-Aggrquart$DFRET[,2]
+			Aggr$DFRET_Q3<-Aggrquart$DFRET[,4]
+
+			Aggr <- Aggr[ -c(2:10) ]
+
+#print txt results
+
+			if(printselected==TRUE){write.table(Aggr,file=name7,sep="\t",row.names=FALSE)}
+			if(printselected==TRUE){write.table(data1,file=name1,sep="\t",row.names=FALSE)}
+			if(printselected==TRUE){write.table(data1sub,file=name5,sep="\t",row.names=FALSE)}
+
+			if(batch_analysis==TRUE){
+
+				sink("Fitresults1.txt",append=TRUE)
+				if(fitting==TRUE){
+					cat(name,"\t",coef(summary(fit))[1,1],"\t",coef(summary(fit))[1,2],"\t",coef(summary(fit))[2,1],"\t",coef(summary(fit))[2,2],"\t",coef(summary(fit))[3,1],"\t",coef(summary(fit))[3,2],"\n")
+				}else{
+					cat(name,"\t","fitting failed \n")
+				}
+				sink()
+
+				sink("Fitresults2.txt",append=TRUE)
+				cat(name,"\n")
+				if(fitting==TRUE){
+					print(summary(fit))
+				}else{
+					cat("fitting failed \n")
+				}
+				cat("########################################## \n")
+				sink()
+
+			}
+			sink(name4)
+			cat(name_base, "\n")
+			if(fitting==TRUE){
+				try(print(summary(fit)))
+			}else{
+				print("fitting FAILED")
+			}		
+			sink()
+
+#print selection plot
+
+			dev.new(width=6,height=3)
+
+			old.par=par(mfrow=c(1, 2))	
+			plot(data$don,data$acc,xlab="donor",ylab="acceptor",main="data selection 1",col=rgb(1,0,0,alpha=0.5),pch=20,cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5)
+			points(data1$don,data1$acc,col=rgb(0,0,0,alpha=0.5),pch=20)
+
+			plot(data$acctodon,data$DFRET,xlim=c(0,upperAD),ylim=c(0,0.5),xlab="acc:don ratio",ylab="DFRET",main="data selection 2",col=rgb(1,0,0,alpha=0.5),pch=20,cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5)
+			points(data1$acctodon,data1$DFRET,col=rgb(0,0,0,alpha=0.5),pch=20)
+
+			if(printresults==TRUE){dev.print(png,file=name2,unit="px",width=1024,height=512)}
+
+			par(old.par)
+
+
+
+#print fit plot
+		
+			if(fitting==TRUE){
+
+				dev.new(width=6,height=3)
+				old.par=par(mfrow=c(1, 2))
+
+				plot(data1sub$acctodon,data1sub$DFRET,ylim=c(0,0.3),xlim=c(0,3),xlab="[acc]:[don]",ylab="DFRET",col=rgb(0,0,0,alpha=0.1),pch=20, main="original data",cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5)
+				points(data1sub$acctodon,DFRETfit,col=rgb(1,0,0,alpha=0.1),pch=20)
+
+				plot(data1sub$acctodon,DFRETres,xlim=c(0,3),ylim=c(-0.3,0.3),col=rgb(0,0,1,alpha=0.1),xlab="[acc]:[don]",ylab="DFRET residuals",pch=20,main="residuals",cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5)
+				lines(c(0,3),c(0,0),col="red")
+
+				if(printresults==TRUE){dev.print(png,file=name3,unit="px",width=1024,height=512)}
+
+				par(old.par)
+	
+			}
+
+#print curves
+
+			dev.new(width=5,height=5)
+			old.par=par(mfrow=c(1, 1))		
+
+			plot(Aggr$acctodon,Aggr$DFRET,ylim=c(0,0.3),xlim=c(0,3),xlab="[acc]:[don]",ylab="DFRET",col="blue",pch=20, main="aggregated curve",cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5)
+			lines(Aggr$acctodon,Aggr$DFRET,col="blue")
+			lines(Aggr$acctodon,Aggr$DFRET_Q1,col="red", lty=2)
+			lines(Aggr$acctodon,Aggr$DFRET_Q3,col="red", lty=2)
+			
+			par(old.par)
+		
+			if(fitting==TRUE){
+			
+				Aggr$DFRETfit_Q1<-Aggrquart$DFRETfit[,2]
+				Aggr$DFRETfit_Q3<-Aggrquart$DFRETfit[,4]
+				if(drawFittedLine==TRUE){
+					lines(Aggr$acctodon,Aggr$DFRETfit,col="green")
+					legend(0, 0.3, legend=c("median DFRET", "Q1 & Q3", "fitted median DFRET"),col=c("blue", "red", "green"), lty=1:2, cex=0.8)
+				}else{
+					legend(0, 0.3, legend=c("median DFRET", "Q1 & Q3"),col=c("blue", "red"), lty=1:2, cex=0.8)
+				}
+						
+			}else{	
+				legend(0, 0.3, legend=c("median DFRET", "Q1 & Q3"),col=c("blue", "red"), lty=1:2, cex=0.8)
+			}
+
+			if(printresults==TRUE){dev.print(png,file=name8,unit="px",width=512,height=512)}
+			par(old.par)
+	
+#report progress
+			dev.new(xpos=100,ypos=100)
+			par(mar = c(0,0,0,0))
+			plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+			text(x = 0.5, y = 0.5, paste("finished",count,"of",NROW(files),"\n"), cex = 1.5, col = "black")
+			par(old.par)
+
+		},error=function(e){})
+	}
+
+###################################################################################################	
+#THANK YOU FOR USING THIS PROGRAM
+
+
